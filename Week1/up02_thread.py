@@ -1,40 +1,45 @@
 from time import sleep, ctime, time
-import multiprocessing
+import threading
 
 def update_cup_number(customer_name):
-    print(f"{ctime()} | LCD: Processing for customer {customer_name}...")
+    thread_name = threading.current_thread().name
+
+    print(f"{ctime()} | [{thread_name}] LCD: Processing cup number for customer {customer_name}...")
     sleep(1)
-    print(f"{ctime()} | LCD: Done for customer {customer_name}.")
+    print(f"{ctime()} | [{thread_name}] LCD: Done for customer {customer_name}.")
 
 def make_coffee(customer_name):
-    print(f"{ctime()} | Making coffee for {customer_name}...")
+    thread_name = threading.current_thread().name
+
+    print(f"{ctime()} | [{thread_name}] Making coffee for customer {customer_name}...")
     sleep(1)
-    print(f"{ctime()} | Coffee ready for {customer_name}!")
+    print(f"{ctime()} | [{thread_name}] Coffee ready for customer {customer_name}!")
 
     update_cup_number(customer_name)
 
 def main():
     queue = ['A', 'B', 'C']
-    processes = []
+    threads = []
 
-    print(f"{ctime()} | === Multi-processing Coffee Machine ===")
+    print(f"{ctime()} | === Threading Coffee Machine ===")
     start_time = time()
 
-    # สร้าง Process ให้ลูกค้าแต่ละคน
+    # สร้าง Thread ให้ลูกค้าแต่ละคน
     for customer in queue:
-        p = multiprocessing.Process(
+        t = threading.Thread(
             target=make_coffee,
-            args=(customer,)
+            args=(customer,),
+            name=f"Thread-{customer}"
         )
-        processes.append(p)
+        threads.append(t)
 
-    # สั่งให้ทุก Process เริ่มทำงาน
-    for p in processes:
-        p.start()
+    # สั่งให้ทุก Thread เริ่มทำงาน
+    for t in threads:
+        t.start()
 
-    # รอให้ทุก Process ทำงานเสร็จ
-    for p in processes:
-        p.join()
+    # รอให้ทุก Thread ทำงานเสร็จ
+    for t in threads:
+        t.join()
 
     duration = time() - start_time
     print(f"{ctime()} | Total time: {duration:0.2f} seconds")
