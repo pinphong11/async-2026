@@ -32,9 +32,6 @@ def main():
             name=f"Thread-{customer}"
         )
         threads.append(t)
-
-    # สั่งให้ทุก Thread เริ่มทำงาน
-    for t in threads:
         t.start()
 
     # รอให้ทุก Thread ทำงานเสร็จ
