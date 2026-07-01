@@ -10,10 +10,10 @@ async def cook_spaghtti(customer):
     print(f"{ctime()} | Finished cooking spaghetti for {customer}.")
     
 async def main():
-    start_time = time()
+    start = time()
     
     # Create a task for cooking spaghetti for Alice
-    task_a = asyncio.create_task(cook_spaghtti("Alice")) #สร้าง task1 ขึ้นมาเพื่อให้ทำงานแบบ Async
+    task1 = asyncio.create_task(cook_spaghtti("Alice")) #สร้าง task1 ขึ้นมาเพื่อให้ทำงานแบบ Async
     
     # Create a task for cooking spaghetti for Bob
     # task2 = asyncio.create_task(cook_spaghtti("Bob"))
