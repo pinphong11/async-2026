@@ -1,46 +1,73 @@
-# Assignment 1: The Smart Courier System (ระบบส่งพัสดุด่วน)
+# Assignment 1: Smart Courier System (40 คะแนน)
+# Objective: ตรวจสอบการคุมและการจัดการ CancelledError
+# Skills: create_task + name, .done(), .cancel(), CancelledError, .cancelled()
+
 import asyncio
 from time import ctime
 
 
+# ──────────────────────────────────────────────
+# ข้อ 1: Coroutine function ที่จำลองการส่งพัสดุ
+# ──────────────────────────────────────────────
 async def delivery_task(package_id, duration):
-    # เริ่มส่งพัสดุ พิมพ์ข้อความแจ้งเริ่มงาน
-    print(f"{ctime()} Courier: Starting delivery of package {package_id} (ETA {duration}s)...")
+    """
+    จำลองพนักงานส่งพัสดุ 1 คน
+    - พิมพ์ข้อความเมื่อเริ่มส่ง
+    - รอ asyncio.sleep(duration) แทนการเดินทางจริง
+    - ดักจับ CancelledError เพื่อล้างทรัพยากรและแจ้งผล
+    - return ข้อความยืนยันเมื่อสำเร็จ
+    """
     try:
-        # จำลองเวลาที่ใช้ในการส่งของ
-        await asyncio.sleep(duration)
-        print(f"{ctime()} Courier: Package {package_id} arrived at destination!")
+        print(f"{ctime()} Courier started delivering {package_id}...")
+        await asyncio.sleep(duration)  # จุดสลับ — Event Loop สามารถสั่ง cancel ได้ที่นี่
+        print(f"{ctime()} Package {package_id} Delivered!")
         return f"Package {package_id} Delivered!"
+
     except asyncio.CancelledError:
-        # ดักจับตอนถูกยกเลิกงานกลางคัน
+        # ──────────────────────────────────────────────────────
+        # ข้อ 5: ดักจับ CancelledError และพิมพ์ข้อความแจ้งเตือน
+        # ──────────────────────────────────────────────────────
         print(f"{ctime()} Delivery Canceled! Returning package to warehouse.")
-        raise  # ต้อง raise ต่อ ไม่งั้น Task จะไม่ถูกมาร์คว่า cancelled จริง
+        raise  # ต้อง re-raise เสมอ เพื่อให้ Task ถูกทำเครื่องหมายว่า "cancelled" จริงๆ
 
 
+# ──────────────────────────────────────────────
+# ฟังก์ชันหลัก
+# ──────────────────────────────────────────────
 async def main():
-    # สร้าง Task จาก delivery_task พร้อมตั้งชื่อ Task
-    task = asyncio.create_task(delivery_task(package_id="P001", duration=5.0))
-    task.set_name("Express-Courier")
+    # ──────────────────────────────────────────────────────────
+    # ข้อ 2: สร้าง Task จาก delivery_task ตั้งชื่อว่า "Express-Courier"
+    # ──────────────────────────────────────────────────────────
+    task = asyncio.create_task(
+        delivery_task("P001", duration=5.0),
+        name="Express-Courier"           # ตั้งชื่อ Task ตามข้อกำหนด
+    )
 
-    # จำลองว่าเวลาผ่านไป 2 วินาทีระหว่างพัสดุกำลังเดินทาง
+    # ──────────────────────────────────────────────────────────
+    # ข้อ 3: รอ 2 วินาที แล้วตรวจสอบสถานะ Task
+    # ──────────────────────────────────────────────────────────
     await asyncio.sleep(2.0)
 
-    # ตรวจสอบสถานะ + พิมพ์ชื่อ Task ปัจจุบัน
-    print(f"{ctime()} Main: Checking on task '{task.get_name()}' -> Done? {task.done()}")
+    print(f"{ctime()} Checking task '{task.get_name()}'. Is it done? {task.done()}")
 
+    # ──────────────────────────────────────────────────────────
+    # ข้อ 4: ถ้ายังไม่เสร็จ ให้ยกเลิกทันที
+    # ──────────────────────────────────────────────────────────
     if not task.done():
-        # ถ้ายังไม่เสร็จ (นานเกินไป) ให้ยกเลิกงานทันที
-        print(f"{ctime()} Main: Delivery is taking too long! Cancelling '{task.get_name()}' now.")
+        print(f"{ctime()} Taking too long! Canceling the task...")
         task.cancel()
 
-    try:
-        await task  # await task ที่ถูก cancel จะ raise CancelledError ออกมาที่นี่
-    except asyncio.CancelledError:
-        print(f"{ctime()} Main: Confirmed task was cancelled from the caller side.")
+    # yield ให้ Event Loop มีโอกาสส่ง CancelledError เข้าไปใน delivery_task
+    await asyncio.sleep(0.1)
 
-    # ตรวจสอบสถานะ .cancelled() ว่าเป็น True หรือไม่
-    print(f"{ctime()} Main: Is task cancelled? {task.cancelled()}")
+    # ──────────────────────────────────────────────────────────
+    # ข้อ 5: ตรวจสอบสถานะสุดท้ายด้วย .cancelled()
+    # ──────────────────────────────────────────────────────────
+    print(f"{ctime()} Final verify: Is task officially canceled? {task.cancelled()}")
 
 
+# ──────────────────────────────────────────────
+# Entry Point
+# ──────────────────────────────────────────────
 if __name__ == "__main__":
     asyncio.run(main())
