@@ -66,7 +66,7 @@ Turn a specific light `ON` or `OFF`. The API will intentionally block/delay the 
   * **Body Example:**
     ```json
     {
-      "student_id": "65010001",
+      "student_id": "6710301023",
       "light_id": "light_1",
       "current_status": "ON"
     }
