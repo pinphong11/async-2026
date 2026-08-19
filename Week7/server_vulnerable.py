@@ -1,79 +1,86 @@
 import asyncio
-import httpx
+from typing import Dict, List
+from fastapi import FastAPI
+from pydantic import BaseModel
 
-# เปลี่ยน IP ตรงนี้ให้เป็น IP เครื่องเพื่อนที่เป็น Server (เช่น "192.168.1.50")
-SERVER_IP = "172.20.56.117"
-PORT = "8080"
-SERVER_URL = f"http://{SERVER_IP}:{PORT}"
+app = FastAPI()
 
-# ระบุรหัส/ชื่อนักเรียนของผู้ส่ง
-MY_STUDENT_ID = "Student_01"
+STUDENTS = [
+    "Student_01",
+    "Student_02",
+    "Student_03",
+    "Student_04",
+    "Student_05",
+]
 
-async def hunt_coupons():
-    async with httpx.AsyncClient() as client:
-        print(f"[{MY_STUDENT_ID}] เริ่มต้นภารกิจล่าคูปอง...")
+GROUP_SIZE = len(STUDENTS)
+TOTAL_COUPONS = (GROUP_SIZE * 2) - 1
 
-        # ยิงขอคูปองต่อเนื่องสูงสุด 5 ครั้ง เพื่อพยายามเก็บให้ได้ครบ 2 ใบ
-        for attempt in range(1, 6):
-            try:
-                res = await client.post(
-                    f"{SERVER_URL}/claim",
-                    json={"student_id": MY_STUDENT_ID},
-                    timeout=5.0
-                )
+coupons_db: List[str] = [
+    f"COUPON-{i:02d}" for i in range(1, TOTAL_COUPONS + 1)
+]
 
-                data = res.json()
-                status = data.get("status")
+# ใช้ Pointer ชี้ตำแหน่งคูปองใบถัดไปที่จะจ่ายแจก
+current_coupon_index = 0
 
-                print(f"  — ครั้งที่ {attempt}: [{status}] -> {data.get('message', data.get('claimed_coupon'))}")
+student_claims: Dict[str, List[str]] = {
+    student_id: [] for student_id in STUDENTS
+}
 
-                # หากได้ครบ 2 ใบ หรือคูปองหมดแล้ว ให้หยุดยิงทันที
-                if status in ["LIMIT_REACHED", "OUT_OF_STOCK"]:
-                    break
-                
-            except httpx.RequestError as e:
-                print(f"  — ครั้งที่ {attempt}: เกิดข้อผิดพลาดในการเชื่อมต่อ: {e}")
-                
-                
-            #พักก่อนยิงครั้งต่อไป 1 วินาที
-            await asyncio.sleep(0.2)
-            
-        # ------------------------------------------------   
-        # 1. ดึงสรุปคูปองส่วนตัว (เฉพาะของ MY_STUDENT_ID)
-        # ------------------------------------------------
-        print("\nกำลังดึงสรุปผลคูปองของตนเอง...")
-        try:
-            res = await client.get(f"{SERVER_URL}/my-coupons/{MY_STUDENT_ID}")
-            if res.status_code == 200:
-                summary = res.json()
-                total = summary.get("total_claimed", 0)
-                coupons = summary.get("claimed_coupons", [])
-                print(f"สรุปผล [{MY_STUDENT_ID}]: ได้รับคูปองรวม {total} ใบ -> {coupons}")
-            else:
-                print(f"ดึงข้อมูลส่วนตัวไม่สำเร็จ Status Code: {res.status_code}")
-        except Exception as e:
-            print(f"เกิดข้อผิดพลาดในการดึงข้อมูลส่วนตัว: {e}")
 
-        # ------------------------------------------------
-        # 2. เพิ่มการดึงสรุปภาพรวมทั้งหมด (/summary)
-        # ------------------------------------------------
-        print("\n กำลังดึงสรุปภาพรวมคูปองทั้งหมดจาก Server (/summary)...")
-        try:
-            res = await client.get(f"{SERVER_URL}/summary")
-            if res.status_code == 200:
-                summary_all = res.json()
-                rem_stock = summary_all.get("remaining_stock", "N/A")
-                claims = summary_all.get("student_claims", {})
+class ClaimRequest(BaseModel):
+    student_id: str
 
-                print(f"จำนวนคูปองคงเหลือใน Server: {rem_stock} ใบ")
-                print("รายการคูปองที่นักเรียนแต่ละคนได้รับ:")
 
-                for sid, coupons in claims.items():
-                    print(f"  - {sid}: ได้รับ {len(coupons)} ใบ -> {coupons}")
-            else:
-                print(f"ดึงข้อมูลสรุปภาพรวมไม่สำเร็จ Status Code: {res.status_code}")
-        except Exception as e:
-            print(f"เกิดข้อผิดพลาดในการดึงสรุปภาพรวม: {e}")
+@app.post("/claim")
+async def claim_coupon(req: ClaimRequest):
+    global current_coupon_index
+    student_id = req.student_id
 
-if __name__ == "__main__":
-    asyncio.run(hunt_coupons())
+    if student_id not in student_claims:
+        return {
+            "status": "INVALID_STUDENT",
+            "message": "ไม่พบรายชื่อในระบบ"
+        }
+
+    if len(student_claims[student_id]) >= 2:
+        return {
+            "status": "LIMIT_REACHED",
+            "message": "คุณรับคูปองครบ 2 ใบแล้ว"
+        }
+
+    # CRITICAL SECTION (ไม่มี Lock)
+    if current_coupon_index < len(coupons_db):
+        # 1. อ่านค่า Index ปัจจุบันมาเก็บไว้
+        index_to_claim = current_coupon_index
+
+        # หน่วงเวลาเปิดช่องให้ Race Condition เกิดขึ้น
+        await asyncio.sleep(0.1)
+
+        # 2. แจกคูปองตาม Index นั้น
+        coupon = coupons_db[index_to_claim]
+        student_claims[student_id].append(coupon)
+
+        # 3. ขยับ Index ไปใบถัดไป
+        # (ถ้ามี Request เข้าพร้อมกัน ทั้งคู่จะอ่าน Index เดียวกัน
+        # จะแจกคูปองซ้ำใบเดียวกันทันที!)
+        current_coupon_index = index_to_claim + 1
+
+        return {
+            "status": "SUCCESS",
+            "claimed_coupon": coupon,
+            "total_owned": len(student_claims[student_id])
+        }
+
+    return {
+        "status": "OUT_OF_STOCK",
+        "message": "คูปองหมดแล้ว"
+    }
+
+
+@app.get("/summary")
+async def get_summary():
+    return {
+        "remaining_stock": len(coupons_db) - current_coupon_index,
+        "student_claims": student_claims
+    }
